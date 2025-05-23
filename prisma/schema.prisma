@@ -1,0 +1,108 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Alt + Shift + F = จัด format
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String?
+  name      String?
+  picture   String?
+  role      String   @default("user")
+  enable    Boolean  @default(true)
+  address   String?
+  order     Order[]
+  carts     Cart[]
+  createdAt DateTime @default(now()) // บันทึกเวลาสมัครเข้าให้ลงในเวลา ณ ปัจจุบัน
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id          Int              @id @default(autoincrement())
+  title       String
+  description String
+  price       Float
+  sold        Int              @default(0)
+  quantity    Int
+  orderItems  ProductOnOrder[] // เอาไว้ทำเป็น relation เชื่อมกับ order
+  cartItems   ProductOnCart[] // เชื่อมกับ Cart
+  images      Image[] // 1 product มีได้หลาย image
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Order {
+  id          Int              @id @default(autoincrement())
+  products    ProductOnOrder[] // เอาไว้ทำเป็น relation เชื่อมกับ product
+  cartTotal   Float
+  orderStatus String           @default("Not Process")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  orderedBy   User             @relation(fields: [orderedById], references: [id])
+  orderedById Int
+}
+
+// ต้องมีตารางเพิ่มเพราะ 1 Order มีได้หลาย Category & 1 Category มีได้หลาย Order
+model ProductOnOrder {
+  id        Int     @id @default(autoincrement())
+  // Cascade คือ เวลาตารางหลักถูกลบ ข้อมูลพวกนี้ก็จะถูกลบไปด้วย
+  // fields คือการอ้างอิง id ของตาราง product กับ order
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   Int
+  count     Int
+  price     Float
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cart {
+  id          Int             @id @default(autoincrement())
+  products    ProductOnCart[] // เชื่อมกับ order
+  cartTotal   Float
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  orderedBy   User            @relation(fields: [orderedById], references: [id])
+  orderedById Int
+}
+
+// ตารางใหม่เพราะทั้งสองเป็น 1 - many
+model ProductOnCart {
+  id        Int     @id @default(autoincrement())
+  cart      Cart    @relation(fields: [cartId], references: [id])
+  cartId    Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId Int
+  count     Int
+  price     Float
+}
+
+model Image {
+  id         Int      @id @default(autoincrement())
+  asset_id   String // ต้องมีเพราะว่าเอามาจาก cloudlinary
+  public_id  String
+  url        String
+  secure_url String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  Int
+}
