@@ -1,4 +1,4 @@
-const { PrismaClient, Prisma } = require('@prisma/client')
-const prima = new PrismaClient()
+const { PrismaClient } = require('@prisma/client')
+const prisma = new PrismaClient()
 
-module.exports = Prisma
+module.exports = prisma
