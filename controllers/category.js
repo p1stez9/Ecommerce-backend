@@ -1,7 +1,18 @@
+const prisma = require("../config/prisma")
+
+// post in postman
 exports.create = async (req,res) => {
     try {
         //code
-        res.send('Hello Category')
+        const { name } = req.body  
+        // prisma.ชื่อtableของdatabase.function
+        const category = await prisma.category.create({
+            data:{
+                name: name
+            }
+        })
+
+        res.send(category)
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -10,10 +21,12 @@ exports.create = async (req,res) => {
     }
 }
 
+// get in postman
 exports.list = async (req,res) => {
     try {
         //code
-        res.send('Hello Category List')
+        const category = await prisma.category.findMany()
+        res.send(category)
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -26,8 +39,12 @@ exports.remove = async (req,res) => {
     try {
         //code
         const { id } = req.params // params คือดู id ได้
-        console.log(id)
-        res.send('Hello Category Remove')
+        const category = await prisma.category.delete({
+            where:{ 
+                id: Number(id) // คือข้อมูล id มันส่งมาเป็น string เราต้องทำให้มันเป็น number ก่อน
+             }
+        })
+        res.send(category)
     } catch (error) {
         console.log(error)
         res.status(500).json({
