@@ -112,9 +112,20 @@ exports.userCart = async (req,res) => {
             sum + item.price * item.count, 0)
 
 
-        console.log(cartTotal)
+        // New cart
+        const newCart = await prisma.cart.create({
+            data: {
+                // ที่ต้องทำแบบนี้เพราะเป็น many to many หรือ one to many
+                products: { // ไอพวกนี้มันจะเข้้าไปอยู่ในตาราง many
+                    create: products
+                },
+                cartTotal: cartTotal,
+                orderedById: user.id
+            }
+        })
 
-        res.send('Hello userCart')
+        console.log(newCart)
+        res.send('Add Cart Ok')
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -126,7 +137,27 @@ exports.userCart = async (req,res) => {
 exports.getUserCart = async (req,res) => {
     try {
         // code
-        res.send('Hello getUserCart')
+        const cart = await prisma.cart.findFirst({
+            where: {
+                orderedById: Number(req.user.id)
+            },
+            include: {
+                products: {
+                    // ต้อง include หลายรอบ เพราะจะได้ข้อมูลสินค้าจริงๆ
+                    // แล้วที่มันเป็น product เฉยๆไม่มี s คือในตาราง database ตอนเชื่อมมันเป็นชื่อ product เฉยๆ
+                    include: {
+                        product: true
+                    }
+                }
+            }
+        })
+        // console.log(cart)
+
+        // ทำให้หัวข้อใน postman ชัดเจน
+        res.json({
+            products: cart.products,
+            cartTotal: cart.cartTotal
+        })
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -138,7 +169,34 @@ exports.getUserCart = async (req,res) => {
 exports.emptyCart = async (req,res) => {
     try {
         // code
-        res.send('Hello emptyCart')
+        const cart = await prisma.cart.findFirst({
+            where: {
+                orderedById: Number(req.user.id)
+            }
+        })
+        if(!cart) {
+            return res.status(400).json({
+                message: 'No cart'
+            })
+        }
+
+        // ต้องลบ product ที่อยู่ใน cart ก่อนนะจ๊ะ
+        await prisma.productOnCart.deleteMany({
+            where: {
+                cartId: cart.cartId
+            }
+        })
+        const result = await prisma.cart.deleteMany({
+            where: {
+                orderedById: Number(req.user.id)
+            }   
+        })
+
+        console.log(result)
+        res.json({
+            message: 'Cart Empty Success',
+            deletedCount: result.count
+        })
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -150,7 +208,23 @@ exports.emptyCart = async (req,res) => {
 exports.saveAddress = async (req,res) => {
     try {
         // code
-        res.send('Hello saveAddress')
+        const { address } = req.body
+        console.log(address)
+        const addressUser = await prisma.user.update({
+            // ปกติเวลาจะหาอะไร จะต้องเริ่มด้วย key ก่อน
+            where: {
+                id: Number(req.user.id) // คือหาจาก jwt token นะจ๊ะะ
+            },
+            data: {
+                address: address
+            }
+        })
+
+
+        res.json({
+            ok: true,
+            message: 'Address update success'
+        })
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -162,7 +236,106 @@ exports.saveAddress = async (req,res) => {
 exports.saveOrder = async (req,res) => {
     try {
         // code
-        res.send('Hello saveOrder')
+        // Step 1 Get Uesr Cart
+        const userCart = await prisma.cart.findFirst({
+            where: {
+                orderedById: Number(req.user.id)
+            },
+            // จะต้องเอา product มาด้วยอิอิ
+            include: {
+                products: true
+            }
+        })
+
+        // Check Cart Empty
+        if(!userCart || userCart.products.length === 0) {
+            return res.status(400).json({
+                ok: false,
+                message: 'Cart is Empty'
+            })
+        }
+
+        // Check quantity
+        // loop เข้าไปข้างในของ usercart ก็คือ product นั่นเอง
+        for(const item of userCart.products) { // เข้าถึง object ข้างในอิอิ
+            //console.log(item)
+            // อันนี้เราจะเข้าไปในแต่ละรายการแล้วนะหาแบบว่าชิ้นนี้มีเท่าไหร่ หาสินค้าที่เรา loop มา
+            const product = await prisma.product.findUnique({
+                where: {
+                    id: item.productId // ค้นหาสินค้าเดียวกัน
+                },
+                select: {
+                    quantity: true,
+                    title: true
+                }
+            })
+            console.log(item)
+            console.log(product)
+
+            // ถ้า item ที่ซื้อมีมากกว่าปัจจุบัน
+            if(!product || item.count > product.quantity) {
+                return res.status(400).json({
+                    ok: false,
+                    message: `ขออภัย สินค้า ${product?.title || 'product'} หมด`
+                })
+            }
+        }
+
+        // Create a new Order
+        const order = await prisma.order.create({
+            data: {
+                // อารมณ์คล้ายๆ cart เลย
+                products: {
+                    create: userCart.products.map((item) => ({
+                        productId: item.productId,
+                        count : item.count,
+                        price : item.price
+                    }))
+                },
+                // อันนี้คือตัว orderById
+                orderedBy: {
+                    connect: {
+                        id: req.user.id
+                    }
+                },
+                cartTotal: userCart.cartTotal
+            }
+        })
+
+        // Update Product
+        // ต้องทำเป็น userCart.products เพราะสิ้นค้าอยู่ในตระกลา้นะอิอิ
+        const update =  userCart.products.map((item) => ({
+            where: {
+                id: item.productId,
+            },
+            data: {
+                quantity: {
+                    decrement: item.count // ทำการลดจำนวนของที่เหลือ
+                },
+                sold: {
+                    increment: item.count //  เพิ่มจำนวนของที่ขายได้
+                }
+            }
+        }))
+        console.log(update)
+
+        // รอทั้งหมด แล้วก็อัพเดต อันนี้ต้องดูดีๆมันยาก
+        await Promise.all(
+            update.map((updated) => prisma.product.update(updated))
+        )
+
+        await prisma.cart.deleteMany({
+            where: {
+                orderedById: Number(req.user.id)
+            }
+        })
+
+        
+
+        res.json({
+            ok: true,
+            order
+        })
     } catch (error) {
         console.log(error)
         res.status(500).json({
@@ -174,7 +347,31 @@ exports.saveOrder = async (req,res) => {
 exports.getOrder = async (req,res) => {
     try {
         // code
-        res.send('Hello getOrder')
+        const orders = await prisma.order.findMany({
+            where: {
+                orderedById: Number(req.user.id)
+            },
+            include: {
+                products: {
+                    include: {
+                        product: true
+                    }
+                }
+            }
+        })
+        if(orders.length === 0) {
+            return res.status(400).json({
+                ok: false,
+                message: 'No orders'
+            })
+        }
+
+        res.json({
+            ok: true,
+            orders
+        })
+
+        console.log(orders)
     } catch (error) {
         console.log(error)
         res.status(500).json({
